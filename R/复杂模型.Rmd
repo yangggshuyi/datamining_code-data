@@ -1,0 +1,180 @@
+---
+title: "复杂模型"
+author: "杨舒仪 徐奕"
+date: "2020/11/20"
+output:
+  prettydoc::html_pretty:
+    theme: hpstr
+    highlight: github
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+## 读入数据
+descriptive <- read.csv("../data/descriptive.csv", header = T, stringsAsFactors = F)   
+
+## 调整因子变量、提取变量
+descriptive$major_apply_new <- relevel(as.factor(descriptive$major_apply_new), ref = "Others")
+descriptive$type <- relevel(as.factor(descriptive$type), ref = "混合")
+features <- c("gpa_dis", "toefl_dis", "gre_total_dis", "type", "major_apply_new",
+              "season", "cross", "rl", "intern", "research", "paper", "first", "sci", 
+              "exchange", "Before_CollegeRank", "Districts", "CollegeRankTop50")
+data <- descriptive[, features]  # 提取变量
+data$y <- ifelse(descriptive$offertype == "Admitted", 1, 0)       
+summary(data)  # 得到整理之后的数据
+
+
+#########   2.logistic 回归  -------------------
+lr_all <- glm(y ~ . , data, family = binomial())
+summary(lr_all)
+
+## 交叉验证
+n <- dim(data)[1]
+k <- 5
+error_lr <- sapply(1: k ,function(i){
+  i <- 1
+  # 分割数据集
+  random_index <- sample(x = 1:k, size = n, replace = T)
+  test_x <- data[random_index==i, ]
+  train_x <- data[random_index!=i, ]
+  
+  # glm 和预测
+  lr_train <- glm(y ~ . , train_x, family = binomial())
+  y_hat <- predict(lr_train, test_x)
+  y_pred <- ifelse(y_hat > 0.5, 1, 0)
+  table_tmp <- table(test_x$y, y_pred)
+  right_ratio <- sum(diag(table_tmp)) / sum(table_tmp)
+  1 - right_ratio
+  }
+)
+
+
+
+
+#########   3.决策树  -------------------
+
+library(rpart)         # 决策树
+library(rpart.plot)    # 决策树结构可视化
+
+# 决策树的可视化解释（用中文更清晰）
+fit.tree <- rpart(as.factor(y) ~ . , data = data,
+                  control = rpart.control(cp = 0.003, minbucket = 120))
+rpart.plot(fit.tree, main = "CART", type = 5, extra = 2, tweak = 1.2)  # 可视化
+
+rpart(as.factor(y) ~ . , data = data)
+
+error_dt <- sapply(1: k ,function(i){
+  # 分割数据集
+  random_index <- sample(x = 1:k, size = n, replace = T)
+  test_x <- data[random_index==i, ]
+  train_x <- data[random_index!=i, ]
+  
+  # 决策树和预测
+  dt_train <- rpart(as.factor(y) ~ . , data = train_x,
+                    control = rpart.control(cp = 0.003, minbucket = 120))
+  y_hat <- predict(dt_train, test_x)[,2]
+  y_pred <- ifelse(y_hat > 0.5, 1, 0)
+  table_tmp <- table(test_x$y, y_pred)
+  right_ratio <- sum(diag(table_tmp)) / sum(table_tmp)
+  1 - right_ratio
+  }
+)
+error_dt
+
+
+#########   4.random forest 和预测  -------------------
+library(randomForest)
+fit.rf <- randomForest(as.factor(y) ~ . , data = data, ntree = 20)
+fit.rf$importance
+error_rf <- sapply(1: k ,function(i){
+  # 分割数据集
+  random_index <- sample(x = 1:k, size = n, replace = T)
+  test_x <- data[random_index==i, ]
+  train_x <- data[random_index!=i, ]
+  
+  # rf和预测
+  dt_train <- randomForest(as.factor(y) ~ . , data = train_x, ntree = 20)
+  y_pred <- predict(dt_train, test_x)
+  table_tmp <- table(test_x$y, y_pred)
+  right_ratio <- sum(diag(table_tmp)) / sum(table_tmp)
+  1-right_ratio
+  }
+)
+error_rf
+
+
+#########   5.xgboost 和预测-------------------
+library(xgboost)       # xgboost
+library(Matrix)        # 数据格式转换
+# 由于建立xgboost模型需要特殊格式数据，对训练集和预测集进行格式转换
+data_xgb <-  sparse.model.matrix(y ~ . , data = data) 
+d_data <- xgb.DMatrix(data_xgb, label = data$y)    # label不能为空
+# xgb_param <- xgb.cv(params = list( booster = "gbtree",     # 基于树模型 （下同）
+#                                    eval_metric = error,    # 度量模型误差（下同）
+#                                    objective = "binary:logistic",   # 定义目标函数（下同）
+#                                    gamma = 0.1,    # 定义树节点分裂所需的最小损失函数下降值（下同）
+#                                    max_depth = 5,  # 定义树最大深度、学习率（下同）
+#                                    eta = 0.1,      # 定义每棵树随机选取样本集和特征子集的比例（下同）
+#                                    subsample = 0.8,
+#                                    colsample_bytree = 0.8), 
+#                     d_data, prediction = T, nfold = 5, nrounds = 100) # 十折交叉验证（下同）
+ 
+
+#########   6.knn-------------------
+library(caret)     # KNN
+error_knn <- sapply(1: k ,function(i){
+  # 分割数据集
+  random_index <- sample(x = 1:k, size = n, replace = T)
+  test_x <- data[random_index==i, ]
+  train_x <- data[random_index!=i, ]
+  
+  # knn和预测
+  knn_train <- knn3(as.factor(y) ~ . , data = train_x, k = 80)
+  y_hat <- predict(knn_train, test_x)[,2]
+  y_pred <- ifelse(y_hat > 0.5, 1, 0)
+  table_tmp <- table(test_x$y, y_pred)
+  right_ratio <- sum(diag(table_tmp)) / sum(table_tmp)
+  1 - right_ratio
+  }
+)
+error_knn
+```
+
+
+```{r}
+#########   7.svm-------------------
+library(e1071)         # SVM
+fit.svm <- svm(as.factor(y) ~ . , data = data, gamma = 0.1, kernel = "radial")
+summary(fit.svm)
+
+```
+
+
+
+```{r}
+error_svm <- sapply(1: k ,function(i){
+  # 分割数据集
+  random_index <- sample(x = 1:k, size = n, replace = T)
+  test_x <- data[random_index==i, ]
+  train_x <- data[random_index!=i, ]
+  
+  # svm 和预测
+  svm_train <- svm(as.factor(y) ~ . , data = train_x, gamma = 0.1, kernel = "radial")
+  y_pred <- predict(svm_train, test_x)
+  table_tmp <- table(test_x$y, y_pred)
+  right_ratio <- sum(diag(table_tmp)) / sum(table_tmp)
+  1 - right_ratio
+}
+)
+error_svm
+
+
+######### 8. kmeans -------------------
+library(cluster)
+fit.kmeans <- pam(data[, -18], 2)
+table(fit.kmeans$clustering, data$y)
+```

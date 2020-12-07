@@ -1,0 +1,901 @@
+---
+title: "预处理&描述"
+author: "杨舒仪 徐奕"
+date: "2020/11/01"
+output:
+  prettydoc::html_pretty:
+    theme: hpstr
+    highlight: github
+    toc: yes
+---
+
+# 读入数据与准备工作
+```{r, warning = F, fig.width = 11, message = F}
+## 清理原始残留变量
+rm(list = ls())  
+
+## 加载包
+library(ggplot2)      # 加载描述统计所需R包
+library(data.table)   # 加载矩阵处理所需R包
+library(reshape)      # 加载矩阵处理所需R包
+library(reshape2)     # 加载调整数据集组织形式所需使用的R包
+library(showtext)
+
+## 设置路径并读入数据
+descriptive <- read.csv("../data/Data_Cleaning.csv", header = T, stringsAsFactors = F) # 读取原始数据
+
+## 查看数据概况
+summary(descriptive)  # 查看数据概况
+descriptive <- descriptive[order(descriptive$index_origin),]  # 将数据按照变量index_origin（原始编号）排序
+
+## 设置字体
+#windowsFonts(Yahei = windowsFont("微软雅黑")) 
+showtext_auto(enable = TRUE)
+
+## 设置ggplot2画图主题
+plot_theme <- theme(panel.background = element_rect(fill = rgb(236, 241, 249, maxColorValue = 255)),
+                    plot.background = element_rect(rgb(236, 241, 249, maxColorValue = 255)),
+                    axis.text = element_text(size = 12),
+                    axis.text.x = element_text(size = 12, face = "bold") ,
+                    axis.text.y = element_text(size = 12, face = "bold") ,
+                    axis.ticks = element_line(color = rgb(236, 241, 249, maxColorValue = 255)),
+                    axis.title = element_text(size = 13),
+                    panel.grid.major = element_line(size = 1),
+                    panel.grid.minor = element_line(color = rgb(236, 241, 249, maxColorValue = 255)),
+                    plot.title = element_text(face = "bold", size = 14),
+                    legend.title = element_text(face = "bold",size = 12),
+                    legend.text = element_text(size = 11))   # 其他图形绘制主题
+```
+
+
+# 描述统计
+
+## 录取与拒绝
+```{r, warning = F, fig.width = 11, message = F}
+unique(descriptive$offertype)  # 查看录取类型
+
+## 调整命名
+descriptive$offertype[descriptive$offertype %in% c("AD小奖", "Offer", "AD无奖")] <- "Admitted"    # 不考虑奖学金，均归入“Admitted“（录取）
+descriptive$offertype[descriptive$offertype == "Rej"] <- "Rejected"   
+descriptive <- descriptive[ - which(descriptive$offertype == ""),]   # 删去缺失录取结果的样本
+
+## 作图
+plot_colors_pie <- c(rgb(6, 102, 177, maxColorValue = 255),     # 设置饼图颜色
+                 rgb(237, 27, 58, maxColorValue = 255),
+                 rgb(250, 190, 175, maxColorValue = 255)) 
+
+plot_theme_pie <- theme(panel.background = element_rect(fill = rgb(236, 241, 249, maxColorValue = 255)),
+                     plot.background = element_rect(rgb(236, 241, 249, maxColorValue = 255)),
+                     axis.text = element_text(color = rgb(236, 241, 249, maxColorValue = 255)),
+                     panel.grid.major = element_line(color = rgb(236, 241, 249, maxColorValue = 255)),
+                     panel.grid.minor = element_line(color = rgb(236, 241, 249, maxColorValue = 255)),
+                     plot.title = element_text( face = "bold", size = 14),
+                     legend.title = element_text( face = "bold",size = 12),
+                     legend.text = element_text(size = 11))   # 饼图绘制主题
+
+
+#(piechart1 <- ggplot(descriptive, aes(x = factor(1), fill = factor(offertype))) +
+#    geom_bar(position = "fill", width = 1,alpha = 0.7) +
+#    scale_fill_manual("申请结果", values = plot_colors_pie) +
+#    coord_polar(theta = "y") +
+#    labs(x = "", y = "", title = "\n录取类型")+
+ #   plot_theme_pie)
+
+## 为简化后续分信息，删掉录取结果为WaitingList的样本
+descriptive <- descriptive[-which(descriptive$offertype == "WaitingList"),]
+```
+
+
+## 博士or硕士
+
+```{r, warning = F, fig.width = 11, message = F}
+unique(descriptive$type)   # 查看录取类型
+
+## 作图
+Ttype <- factor(descriptive$type,levels = c("混合", "MS", "PhD"), labels = c("混合","硕士","博士"))  # 调整命名为中文
+(piechart2 <- ggplot(descriptive, aes(x = factor(1), fill = factor(Ttype))) +
+    geom_bar(position = "fill", width = 1, alpha = 0.7) +
+    scale_fill_manual("申请学位类型", values = plot_colors_pie[c(3,1,2)]) +
+    coord_polar(theta = "y") +  
+    labs(x = "", y = "", title = "\n申请学位类型") +
+    plot_theme_pie)
+```
+
+
+```{r, warning = F, fig.width = 11, message = F}
+##不同学位录取率问题
+ifadmitted <- ifelse(descriptive$offertype == "Admitted",1,0)  
+admittedPct <- aggregate(ifadmitted,list(descriptive$type),mean)  # 计算录取率
+colnames(admittedPct) = c("type", "admittedpct")
+
+## 绘图
+plot_title <- labs(x = "", y = "\n录取率", title = "\n申请学位类型与录取率")
+admittedPct$type <- factor(admittedPct$type, levels = admittedPct$type,          # 修改为中文
+                           labels = c("硕士","博士","混合"))
+(barplot2 <- ggplot(admittedPct, aes(x = type, y = admittedpct)) + 
+    geom_bar(show.legend = F, stat = 'identity', fill = "dodgerblue",
+             alpha = 0.7, position = 'dodge') + 
+    geom_text(label = paste(round(admittedPct$admittedpct, 3)*100, "%", sep=''), # 添加录取率百分比 
+              colour = "black", position = position_stack(1), size = 4, vjust = -0.8)  +
+    geom_hline(aes(yintercept = mean(ifadmitted)), col = "orange", lwd = 0.6) +  # 添加总平均录取率参考线
+    scale_y_continuous(limits=c(0, 1))+                                          # 调整y轴范围为0~100%
+    plot_title + plot_theme)
+```
+
+
+## 申请学校
+
+### 整理申请学校名称
+```{r,warning = FALSE}
+## 修正数据
+descriptive$college_apply[descriptive$college_apply %in% c("Texas A", "M University")] <- "Texas A&M University"
+descriptive$college_apply[descriptive$college_apply %in% c("Washington University in St", " Louis")] <- "Washington University in St. Louis"
+
+## 统一学校名称
+SuoXie <- read.table("../data/所有大学&地区/美国大学缩写汇总.txt", header = T)  # 读入美国大学缩写汇总
+college_apply_new <- NULL                                 # 设置初始值
+college_low <- tolower(descriptive$college_apply)         # 不考虑大小写差异
+suoxie_low <- tolower(SuoXie$ysuoxie)
+for(i in 1:dim(descriptive)[1]){                          # 统一全称和缩写
+  if(college_low[i] %in% suoxie_low){
+    college_apply_new[i] <- as.character(SuoXie$yquancheng[suoxie_low %in% college_low[i]])
+  }
+  else college_apply_new[i] <- descriptive$college_apply[i]
+}
+
+descriptive$College_apply_new <- college_apply_new        # 统一学校名称后的新变量
+```
+
+
+### 热门申请学校
+```{r, warning = F, fig.width = 11, message = F}
+# 找出10大热门学校
+top10_college_apply <- names(sort(table(descriptive$College_apply_new),
+                                          decreasing = T)[c(1:10)])
+# 统计热门学校录取情况
+descriptive_top10 <- descriptive[descriptive$College_apply_new %in% top10_college_apply, ]
+Top10_college_apply <- as.data.frame(table(descriptive_top10$College_apply_new,
+                                           descriptive_top10$offertype))
+colnames(Top10_college_apply) <- c("college", "申请结果", "number")   # 修改列名
+
+# 缩写学校名称，以便图形展示
+Top10_college_apply$college <- factor(Top10_college_apply$college, 
+                                      levels = top10_college_apply, 
+                                      labels = c("CMU", "UC", "USC", "Columbia", "UPenn"
+                                              , "UIUC", "NEU", "UMich", "Cornell", "TAMU"))
+(barplot4 <- ggplot(Top10_college_apply, aes(x = college, y = number, fill = 申请结果)) +
+    geom_bar(show.legend = T, stat = 'identity',
+             alpha = 0.7, position = 'stack') + 
+    labs(x = "", y = "\n申请人数", title = "\nTOP10 热门学校申请人数") +
+    plot_theme)
+```
+
+
+### 热门申请学校录取率
+```{r, warning = F, fig.width = 11, message = F}
+## 排序并提取申请人数较多的百所学校 
+top100_college_apply <- college_apply_new
+Top100FreqUniv <- names(sort(table(top100_college_apply), decreasing = T)[1:100])  
+
+## 计算热门学校录取率
+top100_college_apply[!top100_college_apply %in% Top100FreqUniv] <- NA
+descriptive$Top100_college_apply <- top100_college_apply          # 只保留百所热门学校
+ifadmitted <- ifelse(descriptive$offertype == "Admitted",1,0)     # 录取记为1，被拒记为0
+admittedPct <-  aggregate(ifadmitted,list(descriptive$Top100_college_apply),
+                        function(x){mean(x, na.rm = T)} )         # 按学校分组计算录取率
+colnames(admittedPct) <- c("Top100_college_apply","admittedpct")  # 修改列名
+admittedpct_top100college <- merge(descriptive, admittedPct,      # 将学校录取率并入原数据
+                                   by = "Top100_college_apply", all.x = T)$admittedpct
+
+## 热门学校录取率直方图
+(histogram1 <- ggplot(admittedPct, aes(admittedpct)) +                                      
+  geom_histogram(bins =15, fill = "dodgerblue", alpha = 0.7) +  
+  labs(y ="学校数量", x = "录取率", title = "申请人数Top100大学的录取率分布直方图") + 
+  plot_theme)
+Range <- range(admittedPct$admittedpct, na.rm = T)  # 录取率极值
+admittedPct[admittedPct$admittedpct==Range[1], ]    # 录取率最低的大学
+admittedPct[admittedPct$admittedpct==Range[2], ]    # 录取率最高的大学
+```
+
+
+### 申请学校排名
+
+```{r, warning = F, fig.width = 11, message = F}
+## 按学校名称匹配大学排名
+universities <- read.table("../data/QS大学排名前百（美国）.txt",header = F, sep="\n")$V1     # 读入QS世界大学排名
+top10university <- NULL; top10_50university <- NULL   # 变量初始化
+for(i in 1:dim(descriptive)[1]){                      
+  top10university[i] <- descriptive$College_apply_new[i] %in% universities[1:5] # 共5所美国名校进入世界前十
+  top10_50university[i] <- descriptive$College_apply_new[i] %in% universities[6:19] # 共19所美国名校进入世界前五十名
+}
+
+## 整理变量
+collegerank <- rep("Others",dim(descriptive)[1])     
+collegerank[top10university] <- "Top10"                      # 大学排名分为三类
+collegerank[top10_50university] <- "Top10_50"
+descriptive$CollegeRank <- collegerank                       # 并入原数据
+collegeranktop50 <- ifelse(descriptive$CollegeRank=="Others", "Others", "Top50")
+descriptive$CollegeRankTop50 <- as.factor(collegeranktop50)  # 大学排名分为两类，并入原数据
+```
+
+
+### 申请学校所在地区
+```{r, warning = F, fig.width = 11, message = F}
+## 匹配学校所在地区函数
+Universities <- function(path){ 
+  # 读取数据
+  fileNames <- dir(path) # 获取文件名
+  filePath <- sapply(fileNames, function(x){paste(path,x,sep='/')}) # 生成读取文件路径
+  data <- lapply(filePath, function(x){read.csv(x,header = F)}) # 结果为list
+  
+  # 转化为vector
+  universities <- as.vector(unlist(data[[1]]))
+  for(i in 2:length(data)){
+    universities <- c(universities,as.vector(unlist(data[[i]])))
+  }
+  
+  # 删去括号
+  Univ <- NULL
+  for(i in 1:length(universities)){
+    x <- as.character(universities[i])
+    Univ[i] <- strsplit(x, " \\(")[[1]][1]
+  }
+  
+  # 匹配缩写
+  SuoXie <- read.table("美国大学缩写汇总.txt", header = T)
+  DstSuoxie <- as.character(SuoXie$ysuoxie[SuoXie$yquancheng %in% Univ])
+  
+  # 返回数据
+  return(c(Univ,DstSuoxie))
+}
+
+## 读入地区大学名单
+setwd("../data/所有大学&地区")
+path <- paste0(getwd(),"/East Coast")
+EastCoast <- Universities(paste0(getwd(),"/East Coast"))
+GulfCoast <- Universities(paste0(getwd(),"/Gulf Coast"))
+MidWest <- Universities(paste0(getwd(),"/Mid-west"))
+RockyMountains <- Universities(paste0(getwd(),"/Rocky Mountains"))
+WestCoast <- Universities(paste0(getwd(),"/West Coast"))
+
+## 匹配学校所在地区
+temp <- rep(NA, dim(descriptive)[1])
+temp[tolower(descriptive$college_apply) %in% tolower(EastCoast)] <- "EastCoast"
+temp[tolower(descriptive$college_apply) %in% tolower(GulfCoast)] <- "GulfCoast"
+temp[tolower(descriptive$college_apply) %in% tolower(MidWest)] <- "MidWest"
+temp[tolower(descriptive$college_apply) %in% tolower(RockyMountains)] <- "RockyMountains"
+temp[tolower(descriptive$college_apply) %in% tolower(WestCoast)] <- "WestCoast, AK, HI"
+descriptive$Districts <- temp
+
+## 绘制条形图
+districts <- as.data.frame(sort(table(descriptive$Districts),decreasing = F))
+(barplot5 <- ggplot(districts, aes(x = Var1, y = Freq)) +
+    geom_bar(show.legend = F, stat = 'identity', fill = "dodgerblue",
+             alpha = 0.7, position = 'dodge') + 
+    labs(x = "", y = "申请人数", title = " ")+
+    plot_theme + coord_flip())
+```
+
+
+
+
+
+## 原始学校
+```{r, warning = F, fig.width = 11, message = F}
+## 读入学校排名数据
+universities <- read.table("../data/QS大学排名前500（中国）.txt", header = F, sep="\n")$V1
+universities <- paste0("", gsub(" ", "|", universities), "")    # 删掉空格和符号“|”
+
+## 调整原始学校变量格式
+descriptive$college_before <- gsub(pattern = "\\(|\\{|\\}|\\*| ",    # 删去括号，空格和符号“*”
+                                   replacement = "", x = descriptive$college_before)
+descriptive$college_before[descriptive$college_before==""] <- NA
+
+## 匹配学校
+top100university <- NULL; top100_500university <- NULL
+for(i in 1:dim(descriptive)[1]){
+  top100university[i] <- grepl(descriptive$college_before[i], 
+                              paste0(universities[1:11], collapse = "|"))
+  top100_500university[i] <- grepl(descriptive$college_before[i], 
+                                  paste0(universities[12:27], collapse = "|"))
+}
+descriptive$Before_CollegeRank <- cut(top100university*2 + top100_500university, # 得到原始学校排名
+                                      breaks = c(-0.1, 0.9, 1.9, 3), 
+                                      labels = c("Others", "Top100~500", "Top100")) 
+
+## 计算录取率
+ifadmitted <- ifelse(descriptive$offertype == "Admitted",1,0)
+descriptive$CollegeRank <- factor(descriptive$CollegeRank,    # 调整因子水平顺序
+                                  levels = c("Top10", "Top10_50", "Others"))
+descriptive$Before_CollegeRank <- factor(descriptive$Before_CollegeRank,    # 调整因子水平顺序
+                                  levels = c("Top100", "Top100~500", "Others"))
+admittedPct <- aggregate(ifadmitted, list(descriptive$CollegeRank,   # 分组求平均计算录取率
+                                          descriptive$Before_CollegeRank), mean)
+
+## 画图
+(barplot3 <- ggplot(admittedPct, aes(x = Group.2, y = x, fill = Group.1)) +
+    geom_bar(show.legend = T, stat = 'identity', alpha = 0.7, position = 'dodge') + 
+    labs(x = "原始学校-世界排名", y = "录取率", title = "学校排名与录取率") +
+    scale_fill_manual("申请学校-世界排名", values = rep(c("dodgerblue", "cyan3", "#d3d3d3"), 3))+
+    geom_text(label = paste(round(admittedPct$x, 2)*100, "%", sep=''), # 添加录取率
+              colour = "black", position = position_dodge(1),size = 4, vjust = -0.8)  +
+    geom_hline(aes(yintercept = mean(ifadmitted)),col = "orange",lwd = 0.6) +   # 添加平均录取率参考线
+    scale_y_continuous(limits = c(0, 0.85))+
+    plot_theme)
+```
+
+
+
+
+## 专业
+
+### 专业信息预处理
+```{r, warning = F, fig.width = 11, message = F}
+## 统一原始专业的格式
+descriptive$major_before[descriptive$major_before %in% c("统计","统计学","Stat","stat","Biostat")] <- "Stat/Biostat"
+descriptive$major_before[descriptive$major_before %in% c("软件工程","se","Software Engineering")] <- "SE"
+descriptive$major_before[descriptive$major_before %in% c("cs", "计算机科学")] <- "CS"
+descriptive$major_before[descriptive$major_before %in% c("材料","material","MSE")] <- "Material"
+descriptive$major_before[descriptive$major_before %in% c("通信工程","信息工程","电子信息工程","ee")] <- "EE"
+descriptive$major_before[descriptive$major_before %in% c("Automation","自动化","工业工程","IE")] <- "IEOR"
+descriptive$major_before[descriptive$major_before %in% c("金融数学","金融","金融工程","MFE","Fin","FinMath")] <- "MFE/Fin/FinMath"
+descriptive$major_before[descriptive$major_before %in% c("机械","机械工程","me")] <- "ME"
+```
+
+
+### 热门原始专业
+```{r, warning = F, fig.width = 11, message = F}
+top10mj_bf <- names(sort(table(descriptive$major_before),decreasing = T)[c(1:4,6:11)])     # 统计原始专业数量
+top10mj_bf_des <- descriptive[descriptive$major_before %in% top10mj_bf,]
+mj_bf_top <- as.data.frame(table(top10mj_bf_des$major_before,top10mj_bf_des$type)[,1:2])   # 考虑硕士和博士
+colnames(mj_bf_top)[2] <- "学位"
+mj_bf_top$Var1 <- factor(mj_bf_top$Var1, levels = top10mj_bf,            # 调整为中文
+                              labels = c("电子工程","计算机科学","软件工程","工业工程与运筹学","统计/生统",
+                                         "机械工程","材料","信息系统管理","光电","金融"))
+## 画图
+plot_title1 <- plot_title <- labs(x = "", y = "", title = "\nTOP10 申请专业")
+plot_title2 <- plot_title <- labs(x = "", y = "", title = "\nTOP10 原始专业")
+
+(barplot6 <- ggplot(mj_bf_top, aes(x = Var1, y = Freq, fill = 学位)) +
+    geom_bar(show.legend = T, stat = 'identity', alpha = 0.7, position = 'stack') +
+    labs(x = "", y = "", title = "\nTOP10 原始专业") +
+    scale_y_continuous(limits=c(0, 5500)) +   
+    plot_theme)
+```
+
+
+### 热门申请专业
+```{r, warning = F, fig.width = 11, message = F}
+top10mj_ap <- names(sort(table(descriptive$major_apply),decreasing = T)[c(1:7,9:11)])     # 统计申请专业数量
+descriptive$major_apply_new <- ifelse(descriptive$major_apply %in% top10mj_ap, descriptive$major_apply, "Others") # 增加新变量
+top10mj_ap_des <- descriptive[descriptive$major_apply %in% top10mj_ap,]
+mj_ap_top <- as.data.frame(table(top10mj_ap_des$major_apply,top10mj_ap_des$type)[,1:2])   # 考虑硕士和博士
+colnames(mj_ap_top)[2] <- "学位"
+mj_ap_top$Var1 <- factor(mj_ap_top$Var1, levels = top10mj_ap,            # 调整为中文
+                              labels = c("计算机科学","电子工程","统计/生统","机械工程","信息系统管理",
+                                         "计算机工程","材料","工业工程与运筹学","金融","土木工程"))
+## 画图
+(barplot7 <- ggplot(mj_ap_top, aes(x = Var1, y = Freq, fill = 学位)) +
+    geom_bar(show.legend = T, stat = 'identity', alpha = 0.7, position = 'stack') +
+    labs(x = "", y = "", title = "\nTOP10 申请专业") +
+    scale_y_continuous(limits=c(0, 5500)) +   
+    plot_theme)
+```
+
+
+### 转专业矩阵
+```{r, warning = F, fig.width = 6, message=F}
+## 出现最多的10大专业
+TOP10major <- as.data.frame(sort(table(c(descriptive$major_apply,descriptive$major_before)),
+                                 decreasing = T)[c(1:7, 9:11)])$Var1
+TOP10majorbf <- descriptive[grep(paste(TOP10major, collapse = "|"),
+                                 descriptive$major_before), c(1, 23)]   # 原始专业
+TOP10majorap <- descriptive[grep(paste(TOP10major, collapse = "|"),
+                                 descriptive$major_apply), c(1, 21)]    # 申请专业
+
+## 短表变长表
+TOP10majorbf$major_before <- factor(TOP10majorbf$major_before, levels = TOP10major) 
+TOP10majorap$major_apply <- factor(TOP10majorap$major_apply, levels = TOP10major)   
+for (i in 1:10) {
+  TOP10majorbf <- cbind(TOP10majorbf, grepl(TOP10major[i], TOP10majorbf$major_before))
+  TOP10majorap <- cbind(TOP10majorap, grepl(TOP10major[i], TOP10majorap$major_apply))
+}
+
+## 添加中文专业名
+TOPmajorchinese <- c("计算机科学", "电子工程","统计/生统","机械工程","工业工程与运筹学", 
+                     "软件工程", "信息系统管理","材料","计算机工程","金融")      
+colnames(TOP10majorbf)[3:12] <- TOPmajorchinese 
+colnames(TOP10majorap)[3:12] <- TOPmajorchinese
+
+## 构建原始专业-申请专业矩阵
+major_bf_ap <- merge(TOP10majorbf[,-2], TOP10majorap[, -2],
+                     by="index_origin", all=F)    # 数据合并，取uid相同行
+TOP10major_matrix <- t(as.matrix(major_bf_ap[, 2:11]))%*%as.matrix(major_bf_ap[, 12:21])  # 矩阵相乘
+TOP10major_matrixPct <- sweep(TOP10major_matrix, 1, rowSums(TOP10major_matrix), '/')   # 计算对应的百分比
+rownames(TOP10major_matrixPct) <- sapply(rownames(TOP10major_matrix),
+                                         function(x){substring(x, 1, nchar(x) - 2)})   # 修改行列名（下同）
+colnames(TOP10major_matrixPct) <- sapply(colnames(TOP10major_matrix), 
+                                         function(x){substring(x, 1, nchar(x) - 2)})
+
+## 整理数据组织形式
+TOP10majorPlot <- melt(TOP10major_matrixPct)                # 使用reshape包
+
+TOP10majorPlot2 <- data.table(TOP10majorPlot, key = "Var1")   # 使用data.table包
+TOP10majorPlot2 <- TOP10majorPlot2[order(value, decreasing = T), head(.SD, 3), by=Var1]
+TOP10majorPlot2 <- data.frame(TOP10majorPlot2)
+TOP10majorPlot2[, 3] <- round(TOP10majorPlot2[, 3], 2)      # 将其中元素保留两位小数
+
+## 画图
+(plot.TOP10major <- ggplot(TOP10majorPlot, aes(Var2, Var1, fill = value)) + 
+  geom_tile(colour = "red") +
+  geom_text(data = TOP10majorPlot2, aes(x = Var2, y = Var1, label = value), size = 4) +
+  scale_fill_gradient(low = "white", high = "red") +        # 填充方格颜色
+  xlab("申请专业") + ylab("原始专业") + plot_theme +
+  theme(legend.position = "none",                           # 放大坐标标签字号
+        axis.text.y = element_text(color = "grey20", size = 13),
+        axis.text.x = element_text(angle = 90, color = "grey20", size = 13))+
+  scale_x_discrete(expand=c(0, 0), limits = c(TOPmajorchinese)) +
+  scale_y_discrete(expand=c(0, 0), limits = c(TOPmajorchinese)[10:1]))
+```
+
+### 各专业申请率
+```{r, warning = F, fig.width = 11, message = F}
+## 计算录取率
+ifadmitted <- ifelse(descriptive$offertype == "Admitted",1,0)
+admittedPct <- aggregate(ifadmitted,list(descriptive$major_apply),mean)  
+colnames(admittedPct) <- c("major","admittedpct")
+
+## 选出热门专业
+major_ap_top <- as.data.frame(sort(table(descriptive$major_apply),
+                                   decreasing = T)[c(1:7, 9:11)])  # 统计申请专业
+colnames(major_ap_top) <- c("major","number")                      # 修改列名
+top10mj_ap_Pct <- admittedPct[is.element(admittedPct$major, major_ap_top$major), ]  
+top10mj_ap_Pct <- top10mj_ap_Pct[order(top10mj_ap_Pct$admittedpct, decreasing = T), ]
+top10major <- merge(major_ap_top, top10mj_ap_Pct, by = "major",sort = F)  # 合并专业出现次数和录取率
+top10major$major<- c("计算机科学", "电子工程", "统计/生统", "机械工程", "信息系统管理", "软件工程",
+                     "材料", "工业工程与运筹学", "金融", "土木工程")
+top10major_ <- data.frame(major = rep(top10major$major,2),         # 构造data.frame以便画图
+                          number = c(top10major$number * top10major$admittedpct,
+                                     top10major$number * (1-top10major$admittedpct)),
+                          申请结果 = c(rep("录取", 10), rep("拒绝", 10)))
+## 画图
+(barplot6 <- ggplot(top10major_, aes(x = major, y = number, fill = 申请结果)) +
+    geom_bar(show.legend = T, stat = 'identity', 
+             alpha = 0.7, position = 'stack') + 
+    labs(x = "", y = "\n人数", title = "\nTOP10 申请专业录取率") +
+    scale_x_discrete(expand=c(0, 0), limits = top10major_$major[1:10]) +
+    plot_theme)
+```
+
+
+### 转专业申请率
+```{r, warning = F, fig.width = 11, message = F}
+## 计算录取率
+ifadmitted = ifelse(descriptive$offertype == "Admitted",1,0)
+admittedPct = aggregate(ifadmitted, list(descriptive$cross), mean)  
+colnames(admittedPct) = c("cross", "admittedpct")
+
+## 绘图
+(barplot7 <- ggplot(admittedPct, aes(x = (cross==1), y = admittedpct)) +
+    geom_bar(show.legend = T, stat = 'identity', 
+             alpha = 0.7, position = 'dodge', fill = "dodgerblue") + 
+    geom_text(label = paste(round(admittedPct$admittedpct, 2)*100, "%", sep=''), 
+              colour = "black", position = position_dodge(1),size = 4, vjust = -0.8) +
+    scale_y_continuous(limits = c(0,0.8))+
+    labs(x = "是否为转专业", y = "录取率", title = "转专业录取率") +
+    plot_theme)
+```
+
+
+
+## GRE 成绩
+
+### GRE 成绩预处理
+```{r, warning = F, fig.width = 11, message = F}
+## 转化为numeric型
+gre_plot_dt <- descriptive[,c("gre_total", "gre_v","gre_q")]
+for(i in 1:dim(gre_plot_dt)[2]){   
+  gre_plot_dt[,i] <- as.numeric(gre_plot_dt[,i])
+}
+
+## 转换旧版gre verbal 成绩
+gre_old_v <- cut(gre_plot_dt[which(gre_plot_dt$gre_total > 340),]$gre_v , # 总分大于340时，认定为旧版gre成绩
+                breaks = c(360, 370, 380, 400, 410, 420, 440, 450, 470,   # 按不同分段匹配新gre成绩（下同）
+                           490, 500, 520, 530, 550, 560, 580, 590, 610,
+                           620, 640, 650, 670, 690, 700, 730, 750, 800),
+                labels = c(144:146, 148:170))
+gre_plot_dt[which(gre_plot_dt$gre_total > 340),]$gre_v <- as.numeric(as.character(gre_old_v))
+
+## 转换旧版gre quantitative 成绩
+gre_old_q = cut(gre_plot_dt[which(gre_plot_dt$gre_total > 340),]$gre_q , 
+                breaks = c(720, 730, 750, Inf),
+                labels = c(168,169,170))
+gre_plot_dt[which(gre_plot_dt$gre_total > 345),]$gre_q = as.numeric(as.character(gre_old_q))
+gre_plot_dt[which(gre_plot_dt$gre_q > 170),] <- NA      # 高于满分的成绩赋值为NA
+
+## 总成绩
+gre_plot_dt[which(gre_plot_dt$gre_total > 340), ]$gre_total <- rowSums(gre_plot_dt[which(gre_plot_dt$gre_total > 340), 2:3])      # 两项求和得到gre总成绩
+colnames(gre_plot_dt) <- c("gre_total_new", "gre_v_new","gre_q_new") # 修改列名
+
+## 处理异常值
+descriptive_gre <- cbind(descriptive, gre_plot_dt)
+descriptive_gre[descriptive_gre$index_origin== "1427", ]$gre_total_new <-  as.numeric(substr(descriptive_gre[descriptive_gre$index_origin== "1427", ]$gre_raw, 1, 3))
+
+## 成绩分段
+gre_total_dis <- cut(descriptive_gre$gre_total_new,
+                    breaks = c(0, 315, 320, 325, 330, 350),   # 划分为5段
+                     labels = c("<=315", "315-320", "320-325", "325-330", ">330"))
+```
+
+### GRE成绩与录取率
+```{r, warning = F, fig.width = 11, message = F}
+## 计算录取率
+ifadmitted <- ifelse(descriptive_gre$offertype == "Admitted",1,0)
+admittedPct <- aggregate(ifadmitted,list(gre_total_dis),mean)
+colnames(admittedPct) <- c("GRE","admittedpct")
+
+## 画图
+(barplot8 <- ggplot(admittedPct, aes(x = GRE, y = admittedpct)) + 
+  geom_bar(stat='identity', position='dodge', 
+           alpha = I(0.75), fill = "dodgerblue") + 
+  labs(x="GRE成绩", y=" ", title="\n不同GRE成绩的平均录取率") +
+  geom_text(label = paste(round(admittedPct$admittedpct, 2)*100, "%", sep=''), 
+            colour = "black", position = position_dodge(1), 
+            size = 4, vjust = -0.8)  +
+  geom_hline(aes(yintercept = mean(ifadmitted)),col = "orange",lwd = 1)+
+  geom_text(label = paste(round(mean(ifadmitted), 2)*100, "%", sep=''), 
+            colour = "orange",x = 0.68, y = 0.7, size = 5.8, vjust =  - 0.5)  +
+  scale_y_continuous(limits = c(0,0.8)) + plot_theme)
+
+## 并入原始数据
+descriptive$gre_total_new <- descriptive_gre$gre_total_new   
+```
+
+### GRE分数、学校排名与录取率
+```{r, warning = F, fig.width = 11, message = F}
+admittedPct <- aggregate(ifadmitted, list(gre_total_dis, descriptive_gre$CollegeRankTop50), mean)
+colnames(admittedPct) <- c("GRE","学校排名","admittedpct")
+admittedPct$学校排名 <- factor(admittedPct$学校排名,levels = c("Top50","Others"))
+
+### 画图
+(barplot9 <- ggplot(admittedPct, aes(GRE, admittedpct, fill = 学校排名)) + 
+    geom_bar(stat='identity',position='dodge', alpha = I(0.7)) + 
+    labs(x="", y="", title="\n不同GRE成绩的平均录取率") +
+    geom_text(label = paste(round(admittedPct[,3], 2)*100, "%", sep=''), 
+              colour = "black", position = position_dodge(1),size = 3, vjust = -0.8)  +
+    geom_hline(aes(yintercept = mean(ifadmitted)),col = "orange",lwd = 1)+
+    geom_text(label = paste(round(mean(ifadmitted), 2)*100, "%", sep=''), 
+              colour = "orange",x = 5.4, y = 0.7, size = 5.7, vjust =  - 0.5) + 
+    plot_theme)
+```
+
+
+### gre(verbal)、gre(quantitative)分数、学校排名与录取率
+```{r, warning = F, fig.width = 11, message = F}
+## gre verbal 录取率
+gre_v_dis <- cut(descriptive_gre$gre_v_new,     # 成绩分段（下同）
+                     breaks = c(0,150,155,160,170),
+                     labels = c("<=150","150-155","155-160","160-170"))
+admittedPct <- aggregate(ifadmitted,list(gre_v_dis, descriptive_gre$CollegeRankTop50), mean)  # 计算录取率
+colnames(admittedPct) <- c("GRE_verbal","学校排名","admittedpct")
+admittedPct$学校排名 <- factor(admittedPct$学校排名,levels = c("Top50","Others"))
+
+## 画图
+barplot10.1 <- ggplot(admittedPct, aes(GRE_verbal, admittedpct, fill = 学校排名)) + 
+  geom_bar(stat='identity', position='dodge', alpha = I(0.7)) + 
+  labs(x="GRE(verbal)", y=" ", title="\n不同GRE(Verbal)成绩的平均录取率") +
+  geom_text(label = paste(round(admittedPct[,3], 2)*100, "%", sep=''), 
+            colour = "black", position = position_dodge(1),size = 3, vjust = -0.8)  +
+  geom_hline(aes(yintercept = mean(ifadmitted)),col = "orange",lwd = 1)+
+  geom_text(label = paste(round(mean(ifadmitted), 2)*100, "%", sep=''), 
+            colour = "orange",x = 7.4, y = 0.7, size = 5.7, vjust =  - 0.5) +
+  scale_y_continuous(limits = c(0,0.9)) + 
+  plot_theme
+
+## gre quantitative 录取率
+gre_q_dis <- cut(descriptive_gre$gre_q_new,
+                 breaks = c(0,165,168,170),
+                 labels = c("<=165","165-168","168-170"))
+admittedPct <- aggregate(ifadmitted,list(gre_q_dis,descriptive_gre$CollegeRankTop50),mean)
+colnames(admittedPct) = c("GRE_quant","学校排名","admittedpct")
+admittedPct$学校排名 <- factor(admittedPct$学校排名,levels = c("Top50","Others"))
+
+## 画图
+barplot10.2 <- ggplot(admittedPct, aes(GRE_quant, admittedpct, fill = 学校排名)) + 
+  geom_bar(stat='identity',position='dodge', alpha = I(0.7)) + 
+  labs(x="GRE(Quantitative)", y="", title="不同GRE(Quantitative)成绩的平均录取率") +
+  geom_text(label = paste(round(admittedPct[,3], 2)*100, "%", sep=''), 
+            colour = "black", position = position_dodge(1),size = 3, vjust = -0.8)  +
+  geom_hline(aes(yintercept = mean(ifadmitted)),col = "orange",lwd = 1)+
+  geom_text(label = paste(round(mean(ifadmitted), 2)*100, "%", sep=''), 
+            colour = "orange",x = 7.4, y = 0.7, size = 5.7, vjust =  - 0.5) + 
+  scale_y_continuous(limits = c(0,0.9)) + 
+  plot_theme
+
+barplot10.1
+barplot10.2
+```
+
+
+### 热门专业的GRE录取分数
+```{r, warning = F, fig.width = 11, message = F}
+gre_admitted <- descriptive_gre[descriptive_gre$offertype == "Admitted",]         # 选出结果为录取的数据
+gre_top10mj_ap <- gre_admitted[is.element(gre_admitted$major_apply, top10mj_ap),] # 选出热门专业
+gre_top10mj_ap$major_apply <- factor(gre_top10mj_ap$major_apply,                  # 按专业类型整理顺序
+                                       levels = c("MFE/Fin/FinMath", "Stat/Biostat", "Material",
+                                                  "CivilEng", "CS","EE" , "IEOR", "ME", "MIS", "CE"),
+                                       labels = c("金融", "统计/生统", "材料", "土木工程",
+                                                  "计算机科学", "电子工程", "工业工程与运筹学",
+                                                  "机械工程", "信息系统管理", "计算机工程"))
+(boxplot1 <- ggplot(gre_top10mj_ap, aes(x = major_apply, y = gre_total_new)) +
+  geom_boxplot(show.legend = F,varwidth = T, alpha = I(0.6), fill = "dodgerblue") +
+  scale_y_continuous(limits = c(290, 340), breaks = seq(from = 250, to = 350, by = 10)) +
+  scale_x_discrete(expand=c(0, 0), limits = c("金融", "统计/生统", "工业工程与运筹学","计算机科学",
+                                              "信息系统管理","计算机工程","电子工程" ,"机械工程",
+                                              "材料","土木工程"," ")) +
+  labs(x = "", y = "", title = "\nTOP10 热门专业的录取GRE成绩") + plot_theme)
+```
+
+
+### 大学排名与GRE录取分数
+```{r, warning = F, fig.width = 11, message = F}
+gre_admitted$CollegeRank <- factor(gre_admitted$CollegeRank, levels = c("Top10", "Top10_50", "Others"))
+(boxplot2 <- ggplot(gre_admitted, aes(x = CollegeRank, y = gre_total_new)) +
+  geom_boxplot(show.legend = F, varwidth = T,alpha = I(0.5), fill = "orange") +
+  scale_y_continuous(limits = c(290, 340), breaks = seq(from = 250, to = 350, by = 10)) +
+  labs(x = "", y = "", title = "\n不同排名大学的录取GRE成绩") + plot_theme)
+```
+
+
+## 托福（toefl）
+
+### 托福成绩与录取率
+```{r, warning = F, fig.width = 11, message = F}
+## 整理托福成绩
+descriptive$toefl <- as.numeric(descriptive$toefl)    # 将托福成绩信息变为数值型
+toefl_total_dis <- cut(descriptive$toefl, breaks = c(0, 90, 100, 105, 110, 120),
+                     labels = c("<90", "90-100", "100-105", "105-110", "110-120"))
+## 计算录取率
+ifadmitted <- ifelse(descriptive$offertype == "Admitted",1,0)
+admittedPct <- aggregate(ifadmitted, list(toefl_total_dis), mean)
+colnames(admittedPct) <- c("TOEFL","admittedpct")
+
+## 画图
+(barplot11 <- ggplot(admittedPct, aes(x = TOEFL, y = admittedpct)) + 
+  geom_bar(stat='identity', position='dodge', 
+           alpha = I(0.75), fill = "dodgerblue") + 
+  labs(x="TOEFL", y=" ", title="\n不同托福成绩的平均录取率") +
+  geom_text(label = paste(round(admittedPct$admittedpct, 2)*100, "%", sep=''), 
+            colour = "black", position = position_dodge(1), 
+            size = 4, vjust = -0.8)  +
+  geom_hline(aes(yintercept = mean(ifadmitted)),col = "orange",lwd = 1)+
+  geom_text(label = paste(round(mean(ifadmitted), 2)*100, "%", sep=''), 
+            colour = "orange",x = 0.68, y = 0.71, size = 5.8, vjust =  - 0.5)  +
+  scale_y_continuous(limits = c(0,0.8)) + plot_theme)
+```
+
+
+### 托福分数、学校排名与录取率
+```{r, warning = F, fig.width = 11, message = F}
+admittedPct <- aggregate(ifadmitted, list(toefl_total_dis, descriptive$CollegeRankTop50), mean)
+colnames(admittedPct) <- c("TOEFL","学校排名","admittedpct")
+admittedPct$学校排名 <- factor(admittedPct$学校排名,levels = c("Top50","Others"))
+
+### 画图
+(barplot12 <- ggplot(admittedPct, aes(TOEFL, admittedpct, fill = 学校排名)) + 
+  geom_bar(stat='identity',position='dodge', alpha = I(0.7)) + 
+  labs(x="", y="", title="\n不同托福成绩的平均录取率") +
+  geom_text(label = paste(round(admittedPct[, 3], 2)*100, "%", sep=''), 
+            colour = "black", position = position_dodge(1), size = 3, vjust = - 0.8)  +
+  geom_hline(aes(yintercept = mean(ifadmitted)), col = "orange", lwd = 1)+
+  geom_text(label = paste(round(mean(ifadmitted), 2)*100, "%", sep=''), 
+            colour = "orange",x = 5.4, y = 0.7, size = 5.7, vjust =  - 0.5) + 
+  plot_theme)
+```
+
+### 热门专业的托福录取分数
+```{r, warning = F, fig.width = 11, message = F}
+toefl_admitted <- descriptive[descriptive$offertype == "Admitted",]         # 选出结果为录取的数据
+toefl_top10mj_ap <- toefl_admitted[is.element(toefl_admitted$major_apply,
+                                              top10mj_ap), ]                # 选出热门专业
+toefl_top10mj_ap$major_apply <- factor(toefl_top10mj_ap$major_apply,        # 按专业类型整理顺序
+                                       levels = c("MFE/Fin/FinMath", "Stat/Biostat", "Material",
+                                                  "CivilEng", "CS","EE" , "IEOR", "ME", "MIS", "CE"),
+                                       labels = c("金融", "统计/生统", "材料", "土木工程",
+                                                  "计算机科学", "电子工程", "工业工程与运筹学",
+                                                  "机械工程", "信息系统管理", "计算机工程"))
+
+(boxplot3 <- ggplot(toefl_top10mj_ap, aes(x = major_apply, y = toefl)) +
+  geom_boxplot(show.legend = F,varwidth = T, alpha = I(0.6), fill = "dodgerblue") +
+  scale_y_continuous(limits = c(80, 120), breaks = seq(from = 80, to = 120, by = 10)) +
+  scale_x_discrete(expand=c(0, 0), limits = c("金融", "统计/生统", "工业工程与运筹学","计算机科学",
+                                              "信息系统管理","计算机工程","电子工程" ,"机械工程",
+                                              "材料","土木工程"," ")) +
+  labs(x = "", y = "", title = "\nTOP10 热门专业的录取托福成绩") + plot_theme)
+```
+
+
+
+### 大学排名与托福录取分数
+```{r, warning = F, fig.width = 11, message = F}
+toefl_admitted$CollegeRank <- factor(toefl_admitted$CollegeRank,
+                                     levels = c("Top10", "Top10_50", "Others"))
+(boxplot4 <- ggplot(toefl_admitted, aes(x = CollegeRank, y = toefl)) +
+  geom_boxplot(show.legend = F, varwidth = T,alpha = I(0.5), fill = "orange") +
+  scale_y_continuous(limits = c(80, 120), breaks = seq(from = 80, to = 120, by = 10)) +
+  labs(x = "", y = "", title = "\n不同排名大学的录取托福成绩") + plot_theme)
+```
+
+
+## GPA（标准化考试成绩）
+
+### GPA，大学排名与申请结果
+
+```{r, warning = F, fig.width = 11, message = F}
+## gpa标准化
+descriptive$Standardgap <- (descriptive$gpa/descriptive$gpa_measure)*4     # 将gpa统一整理为4分制
+gpa_offertype <- descriptive[descriptive$gpa_measure %in% c(4, 4.3, 5, 100),
+                             c("Standardgap", "offertype", "CollegeRank")] # 只考虑4/4.3/5/100分制的样本
+gpa_offertype$offertype <- factor(gpa_offertype$offertype, levels = c("Admitted", "Rejected"),
+                                 labels = c("录取","被拒"))                #  调整因子水平
+gpa_offertype$CollegeRank <- ifelse(gpa_offertype$CollegeRank=="Others","Others","Top50名校")
+gpa_offertype$CollegeRank <- factor(gpa_offertype$CollegeRank, levels = c("Top50名校","Others"))
+
+## 画图
+(boxplot5 <- ggplot(gpa_offertype, aes(x = factor(CollegeRank), y = Standardgap, fill = factor(offertype))) +
+    geom_boxplot(show.legend = T, varwidth = T, alpha = I(0.5)) +
+    scale_fill_manual("申请结果", values = c("dodgerblue", "orange")) +    # 按照申请结果填色 
+    scale_y_continuous(limits = c(2, 4),breaks = seq(2, 4, by = 0.2))+     # 不考虑gpa<2.0的样本
+    labs(x = "申请学校的世界排名", y = "GPA", title = "成绩与申请结果") +
+    plot_theme)
+```
+
+## 硬件条件
+
+### 硬件条件与申请学位
+
+```{r, warning = F, fig.width = 6}
+## 预处理
+descriptive$first <- abs(descriptive$first)
+descriptive$sci <- abs(descriptive$sci)
+```
+
+
+## 录取情况与硬件条件
+```{r, warning = F, fig.width = 7, fig.height = 7,message = F}
+extra_offertype <- descriptive[, c("rl", "intern", "research", "paper",
+                                   "first", "sci", "exchange", "type")]
+tab1 <- table(extra_offertype$type) 
+extra_offertype <- melt(extra_offertype, id = "type")      # 短表变长表
+count <- subset(extra_offertype, extra_offertype$value == 1)  
+tab2 <- table(count$type, count$variable)                  # 申请硕博拥有某硬件条件的情况
+count_plot <- melt(rbind(tab2[1, ]/tab1[1], tab2[2, ]/tab1[2],  tab2[3, ]/tab1[3]))  # 学位×硬件条件
+count_plot$Var1 <- factor(count_plot$Var1, levels = c(1, 2, 3),        # 调整变量因子水平
+                       labels = c("硕士\n11370人", "博士\n2394人", "混合\n228人"))
+count_plot$Var2 <- factor(count_plot$Var2, levels = c("research","paper","first",
+                                                  "sci","rl","intern","exchange"),
+                           labels = c("科研", "论文", "一作", "SCI论文", "牛推", "实习", "交换"))
+(matriVar2 <- ggplot(count_plot, aes(x = Var1, y = Var2, label = value, fill = value)) + # 画图
+    geom_tile(show.legend = F) +    
+    geom_text(label = paste(round(count_plot$value, 3)*100, "%", sep = ''),
+              color = "black",  size = 4.5) +
+    scale_fill_gradient("count", low = "white", high = "lightCoral") +
+    labs(x = "申请学位", y = "硬件条件", title = "") + plot_theme)
+```
+
+
+### 硕士:硬件条件
+
+## 录取情况与硬件条件
+```{r, warning = F, fig.width = 7, fig.height = 7,message = F}
+extra_offertype <- descriptive[descriptive$type == "MS",       # 只考虑MS
+                               c("rl", "intern", "research", "paper",
+                                 "first", "sci", "exchange", "offertype")]
+tab1 <- table(extra_offertype$offertype)                        # 统计PhD整体录取情况
+extra_offertype <- melt(extra_offertype, id = "offertype")      # 短表变长表
+count <- subset(extra_offertype, extra_offertype$value == 1)  
+tab2 <- table(count$offertype, count$variable)                  # 计算拥有某硬件条件的录取情况
+count_plot <- melt(rbind(tab2[1, ]/tab1[1], tab2[2, ]/tab1[2])) # 得到录取×硬件条件表
+count_plot$Var1 <- factor(count_plot$Var1, levels = c(1, 2),        # 调整变量因子水平
+                       labels = c("录取\n9483人", "拒绝\n3803人"))
+count_plot$Var2 <- factor(count_plot$Var2, levels = c("research","paper","first",
+                                                  "sci","rl","intern","exchange"),
+                           labels = c("科研", "论文", "一作", "SCI论文", "牛推", "实习", "交换"))
+matrix3.1 <- ggplot(count_plot, aes(x = Var1, y = Var2, label = value, fill = value)) + # 画图
+    geom_tile(show.legend = F) +    
+    geom_text(label = paste(round(count_plot$value, 3)*100, "%", sep=''),
+              color = "black",  size = 4.5) +
+    scale_fill_gradient("count", low = "white", high = "lightCoral") +
+    labs(x = "", y = "", title = "硕士申请") + plot_theme
+```
+
+## 学校排名与硬件条件
+```{r, warning = F, fig.width = 7, fig.height = 7,message = F}
+extra_collage <- descriptive[descriptive$type == "MS",         # 只考虑MS被录取的情况
+                             c("rl", "intern", "research", "paper",
+                                "first", "sci", "exchange", "CollegeRank")]
+tab1 <- table(extra_collage$CollegeRank)                        # 统计录取学校排名情况
+extra_collage <- melt(extra_collage, id = "CollegeRank")        # 短表变长表
+count <- subset(extra_collage, extra_collage$value == 1)  
+tab2 <- table(count$CollegeRank, count$variable)                # 得到录取学校排名×硬件条件表
+count_plot <- melt(rbind(tab2[1, ]/tab1[1], tab2[2, ]/tab1[2], tab2[3, ]/tab1[3])) 
+count_plot$Var1 <- factor(count_plot$Var1, levels = c(1, 2, 3),     # 调整变量因子水平
+                       labels = c("Top10\n316人","Top10-50\n4144人","其他\n8826人"))
+count_plot$Var2 <- factor(count_plot$Var2, levels = c("research","paper","first",
+                                                  "sci","rl","intern","exchange"),
+                           labels = c("科研", "论文", "一作", "SCI论文", "牛推", "实习", "交换"))
+matrix3.2 <- ggplot(count_plot, aes(x = Var1, y = Var2, label = value, fill = value)) + # 画图
+    geom_tile(show.legend = F) +    
+    geom_text(label = paste(round(count_plot$value, 3)*100, "%", sep = ''),
+              color = "black",size = 4.5) +
+    scale_fill_gradient("count", low = "white", high = "lightCoral") +
+    labs(x = "", y = "", title = "硕士申请（录取）") + plot_theme
+
+matrix3.1
+matrix3.2
+```
+
+### 博士:硬件条件
+
+## 录取情况与硬件条件
+```{r, warning = F, fig.width = 7, fig.height = 7,message = F}
+extra_offertype <- descriptive[descriptive$type == "PhD",       # 只考虑PhD
+                               c("rl", "intern", "research", "paper",
+                                 "first", "sci", "exchange", "offertype")]
+tab1 <- table(extra_offertype$offertype)                        # 统计PhD整体录取情况
+extra_offertype <- melt(extra_offertype, id = "offertype")      # 短表变长表
+count <- subset(extra_offertype, extra_offertype$value == 1)  
+tab2 <- table(count$offertype, count$variable)                  # 计算拥有某硬件条件的录取情况
+count_plot <- melt(rbind(tab2[1, ]/tab1[1], tab2[2, ]/tab1[2])) # 得到录取×硬件条件表
+count_plot$Var1 <- factor(count_plot$Var1, levels = c(1, 2),        # 调整变量因子水平
+                       labels = c("录取\n1719人", "拒绝\n675人"))
+count_plot$Var2 <- factor(count_plot$Var2, levels = c("research","paper","first",
+                                                  "sci","rl","intern","exchange"),
+                           labels = c("科研", "论文", "一作", "SCI论文", "牛推", "实习", "交换"))
+matrix4.1 <- ggplot(count_plot, aes(x = Var1, y = Var2, label = value, fill = value)) + # 画图
+    geom_tile(show.legend = F) +    
+    geom_text(label = paste(round(count_plot$value, 3)*100, "%", sep = ''),
+              color = "black",  size = 4.5) +
+    scale_fill_gradient("count", low = "white", high = "lightCoral") +
+    labs(x = "", y = "", title = "博士申请") + plot_theme
+```
+## 学校排名与硬件条件（博士）
+```{r, warning = F, fig.width = 7, fig.height = 7,message = F}
+extra_collage <- descriptive[descriptive$type == "PhD",         # 只考虑PhD被录取的情况
+                             c("rl", "intern", "research", "paper",
+                                "first", "sci", "exchange", "CollegeRank")]
+tab1 <- table(extra_collage$CollegeRank)                        # 统计录取学校排名情况
+extra_collage <- melt(extra_collage, id = "CollegeRank")        # 短表变长表
+count <- subset(extra_collage, extra_collage$value == 1)  
+tab2 <- table(count$CollegeRank, count$variable)                # 得到录取学校排名×硬件条件表
+count_plot <- melt(rbind(tab2[1, ]/tab1[1], tab2[2, ]/tab1[2], tab2[3, ]/tab1[3])) 
+count_plot$Var1 <- factor(count_plot$Var1, levels = c(1, 2, 3),     # 调整变量因子水平
+                       labels = c("Top10\n62人","Top10-50\n426人","其他\n1906人"))
+count_plot$Var2 <- factor(count_plot$Var2, levels = c("research","paper","first",
+                                                  "sci","rl","intern","exchange"),
+                           labels = c("科研", "论文", "一作", "SCI论文", "牛推", "实习", "交换"))
+matrix4.2 <- ggplot(count_plot, aes(x = Var1, y = Var2, label = value, fill = value)) + # 画图
+    geom_tile(show.legend = F) +    
+    geom_text(label = paste(round(count_plot$value, 3)*100, "%", sep = ''),
+              color = "black",  size = 4.5) +
+    scale_fill_gradient("count", low = "white", high = "lightCoral") +
+    labs(x = "", y = "", title = "博士申请（录取）") + plot_theme
+
+matrix4.1
+matrix4.2
+```
+
+
+# 整理输出数据
+```{r, warning = F, fig.width = 7, fig.height = 7,message = F}
+## 成绩分段
+descriptive$gre_total_dis <- cut(descriptive$gre_total_new, breaks = c(0, 319, 322, 325, Inf),
+                                 labels = c("<=319", "319~322", "322~325", ">325"))
+descriptive$toefl_dis <- cut(descriptive$toefl, breaks = c(0, 98, 102, 106, Inf),
+                             labels = c("<=98", "98~102", "102~106", ">106"))
+descriptive$gpa_dis <- cut(descriptive$Standardgap, breaks = c(0, 3.4, 3.55, 3.7, Inf),
+                           labels = c("<=3.4", "3.4~3.55", "3.55~3.7", ">3.7"))
+## 删去缺失后输出
+descriptive <- na.omit(descriptive)                
+#write.csv(file = "../data/descriptive.csv", x = descriptive, row.names = F)
+```

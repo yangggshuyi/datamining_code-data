@@ -1,0 +1,27 @@
+清华大学 清华 THU thu
+北京大学 北大 PKU pku
+复旦大学 复旦 FDU fud Fudan
+上海交通大学 上交 SJTU sjtu
+浙江大学 浙大 ZJU zju
+中国科学技术大学 中科大 USTC ustc
+香港大学 港大 HKU
+香港科技大学 港科大 HKUST
+香港中文大学 港中文 CUHK
+香港城市大学 CityU
+香港理工大学 PolyU
+南京大学 NJU nju
+北京师范大学 北师大 BNU bnu
+武汉大学 武大 WHU whu
+同济大学 Tongji tongji
+中山大学 SYSU sysu
+哈尔滨工业大学 哈工大 HIT hit
+南开大学 NKU nku
+西安交通大学 XJTU xjtu
+上海大学 SHU
+厦门大学 厦大 XMU xmu
+北京理工大学 北理 BIT bit
+华中科技大学 华科 HUST hust
+天津大学 天大 TJU tju
+中国人民大学 人大 RUC ruc
+吉林大学 JLU jlu
+香港浸会大学 HKBU hkbu

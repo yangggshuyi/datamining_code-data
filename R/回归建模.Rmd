@@ -1,0 +1,408 @@
+---
+title: "回归建模"
+author: "杨舒仪 徐奕"
+date: "2020/11/20"
+output:
+  prettydoc::html_pretty:
+    theme: hpstr
+    highlight: github
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## 读入处理后的数据
+```{r, warning = F, message = F}
+## 加载包
+library(pROC)      # 画ROC曲线
+library(ROCR)      # 算AUC值
+library(car)
+
+## 读入数据
+descriptive <- read.csv("../data/descriptive.csv", header = T, stringsAsFactors = F)   
+
+## 调整因子变量水平
+descriptive$major_apply_new <- relevel(as.factor(descriptive$major_apply_new), ref = "Others")
+descriptive$type <- relevel(as.factor(descriptive$type), ref = "混合")
+summary(descriptive)  # 得到整理之后的数据
+```
+
+
+## 计算学校对各因素偏好录取率
+### 计算各学校的各专业录取率
+```{r, warning = F, message = F}
+## 首先选出10个热门专业，100所热门学校
+top10majorapply <- names(sort(table(descriptive$major_apply), decreasing = T)[c(1:7, 9:11)])
+Top100college <- names(sort(table(descriptive$College_apply_new), decreasing = T)[1:66])    # 出现次数大于10词的66所大学
+
+## 编写函数
+AdmittedPct_Major <- function(descriptive, nsample){
+  ## 预处理（下同）
+  descriptive_train <- descriptive[-nsample, ]        # 划分出训练集（下同）
+  college1 <- descriptive_train[descriptive_train$College_apply_new == Top100college[1], c("major_apply","offertype")]
+  temp1 <- sort(table(college1$major_apply),decreasing = T)  # 统计专业出现次数（下同）
+  temp1 <- names(temp1[temp1 >= 10])                  # 专业出现次数 >=10
+  majors1 <- ifelse((college1$major_apply %in% top10majorapply) & (college1$major_apply %in% temp1),
+                    college1$major_apply, "Others")   # 专业出现次数 >=10 且属于热门专业
+  ifadmitted1 <-  ifelse(college1$offertype == "Admitted", 1, 0)    # 计算录取率（下同）
+  admittedPct <- aggregate(ifadmitted1, list(majors1),
+                           function(x){mean(x, na.rm = T)} )
+  LengthCollege <- NULL
+  LengthCollege[1] <- dim(admittedPct)[1]
+  colnames(admittedPct) <- c("major_apply", "admittedpct_major_college")
+
+  ## 估计训练集录取率
+  for(i in 2:length(Top100college)){
+    college1 <- descriptive_train[descriptive_train$College_apply_new == Top100college[i], 
+                                  c("major_apply", "offertype")] 
+    temp1 <- sort(table(college1$major_apply), decreasing = T) 
+    temp1 <- names(temp1[temp1 >= 10])                         # 统计各项出现次数（下同）
+    majors1 <- ifelse((college1$major_apply %in% top10majorapply) & (college1$major_apply %in% temp1),
+                      college1$major_apply, "Others")          # 出现次数较少的项合并计算录取率（下同）
+    ifadmitted1 <-  ifelse(college1$offertype == "Admitted", 1, 0)
+    admittedPct1 <- aggregate(ifadmitted1, list(majors1),      # 计算录取率（下同）
+                              function(x){mean(x, na.rm = T)} )
+    LengthCollege[i] <- dim(admittedPct1)[1]                   # 记录出现次数（下同）
+    colnames(admittedPct1) <- c("major_apply","admittedpct_major_college")
+    admittedPct <- rbind(admittedPct, admittedPct1)       
+  }
+  admittedPct$Top100_college_apply <- as.factor(unlist(sapply(1:length(Top100college),    # 得到估计的各学校专业录取率
+                                                              function(x){rep(Top100college[x], LengthCollege[x])})))
+  ## 计算测试集录取率
+  descriptive <- merge(descriptive, admittedPct, by = c("Top100_college_apply", "major_apply"), all.x = T)
+  descriptive <- descriptive[order(descriptive[, "index_origin"]),]   # 保证数据顺序不变（下同）
+  for(i in 1:length(Top100college)){
+    admittedpct1 <- admittedPct[admittedPct$Top100_college_apply %in% Top100college[i] & admittedPct$major_apply=="Others", ]
+    if(dim(admittedpct1)[1]!=0){   # 该专业在该学校不属于“冷门专业”（即不属于Others）时
+      admittedpct1 <- admittedpct1$admittedpct_major_college
+      descriptive$admittedpct_major_college[(descriptive$Top100_college_apply %in% Top100college[i]) &
+                                              (is.na(descriptive$admittedpct_major_college))] <- admittedpct1
+    }
+    
+  }
+  return(descriptive)
+}
+```
+
+
+### 计算各学校的GPA / GRE / TOEFL各分段录取率
+```{r, warning = F, message = F}
+AdmittedPct_Grade <- function(descriptive, nsample, names, newnames){
+  # nsample：测试集序号；names：变量名；newnames：得到的新变量名
+  
+  ## 预处理（下同）
+  descriptive_train <- descriptive[-nsample, ]
+  college1 <- descriptive_train[descriptive_train$College_apply_new==Top100college[1], c(names, "offertype")]
+  temp1 <- sort(table(college1[,names]),decreasing = T)
+  temp1 <- names(temp1[temp1 >= 10])     # 该学校录取该分段人数>=10
+  gre1 <- ifelse((college1[,names] %in% temp1), as.character(college1[,names]), "Others")   # 其他分段归入Others
+  ifadmitted1 <-  ifelse(college1$offertype == "Admitted", 1, 0)
+  admittedPct <- aggregate(ifadmitted1, list(gre1), function(x){mean(x, na.rm = T)})
+  LengthGres <- NULL
+  LengthGres[1] <- dim(admittedPct)[1]
+  colnames(admittedPct) <- c(names, "admittedpct_college")
+  
+  ## 估计训练集录取率
+  for(i in 2:length(Top100college)){
+    college1 <- descriptive_train[descriptive_train$College_apply_new==Top100college[i],
+                                  c(names, "offertype")]
+    temp1 <- sort(table(college1[, names]), decreasing = T)
+    temp1 <- names(temp1[temp1 >= 10])
+    gre1 <- ifelse((college1[,names] %in% temp1), 
+                   as.character(college1[, names]), "Others") 
+    ifadmitted1 <-  ifelse(college1$offertype == "Admitted", 1, 0)
+    admittedPct1 <- aggregate(ifadmitted1, list(gre1), function(x){mean(x, na.rm = T)})
+    LengthGres[i] <- dim(admittedPct1)[1]
+    colnames(admittedPct1) <- c(names, "admittedpct_college")
+    admittedPct <- rbind(admittedPct, admittedPct1)
+  }
+  admittedPct$Top100_college_apply <- as.factor(unlist(sapply(1:length(Top100college),
+                                                              function(x){rep(Top100college[x],LengthGres[x])})))
+  ## 计算测试集录取率
+  college2 <- merge(descriptive, admittedPct, by = c("Top100_college_apply", names), all.x = T)
+  college2 <- college2[order(college2[, "index_origin"]), ]
+  for(i in 1:length(Top100college)){
+    admittedpct2 <- admittedPct[admittedPct$Top100_college_apply %in% Top100college[i] &
+                                  admittedPct[,names]=="Others",]
+    if(dim(admittedpct2)[1]!=0){
+      admittedpct2 <- admittedpct2$admittedpct_college
+      college2$admittedpct_college[(college2$Top100_college_apply %in% Top100college[i]) &
+                                     (is.na(college2$admittedpct_college))] <- admittedpct2
+    }
+  }
+  colnames(college2)[length(colnames(college2))] <- newnames
+  return(college2)
+}
+```
+
+### 计算各学校对各硬件条件的录取率
+```{r, warning = F, message = F}
+AdmittedPct_Extra <- function(descriptive, nsample, names, newnames){
+  # nsample：测试集序号；names：变量名；newnames：得到的新变量名
+
+  ## 预处理（下同）
+  descriptive_train <- descriptive_new[-nsample, ]
+  college1 <- descriptive_train[descriptive_train$College_apply_new==Top100college[1], c(names, "offertype")]
+  LengthGres <- NULL                                    # 计算申请该学校学生某硬件是否统一
+  LengthGres[1] <- length(unique(college1[, names]))
+  ifadmitted1 <-  ifelse(college1$offertype == "Admitted", 1, 0)  # 按照是否包含该硬件条件计算录取率
+  admittedPct <- aggregate(ifadmitted1, list(college1[,names]), function(x){mean(x, na.rm = T)})
+  colnames(admittedPct) <- c(names,"admittedpct_college")
+  
+  ## 估计训练集录取率
+  for(i in 2:length(Top100college)){
+    college1 <- descriptive_train[descriptive_train$College_apply_new==Top100college[i], c(names, "offertype")]
+    LengthGres[i] <- length(unique(college1[,names]))
+    ifadmitted1 <-  ifelse(college1$offertype == "Admitted",1,0)
+    admittedPct1 <- aggregate(ifadmitted1, list(college1[,names]), function(x){mean(x, na.rm = T)})
+    colnames(admittedPct1) <- c(names,"admittedpct_college")
+    
+    admittedPct <- rbind(admittedPct, admittedPct1)
+  }
+  admittedPct$Top100_college_apply <-  as.factor(unlist(sapply(1:length(Top100college),
+                                                               function(x){rep(Top100college[x], LengthGres[x])})))
+  ## 计算测试集录取率
+  college2 <- merge(descriptive, admittedPct, by = c("Top100_college_apply", names), all.x = T)
+  college2 <- college2[order(college2[, "index_origin"]), ]
+  for(i in 1:length(Top100college)){
+    admittedPct3 <- admittedPct$admittedpct_college[admittedPct$Top100_college_apply %in% Top100college[29]]
+    if(LengthGres[i]==1){
+    college2$admittedpct_college[(college2$Top100_college_apply %in% Top100college[i]) &
+                                   (is.na(college2$admittedpct_college))] <- admittedPct3
+  }
+  }
+  colnames(college2)[length(colnames(college2))] <- newnames
+  return(college2)
+}
+```
+
+## 建立回归模型
+
+```{r, warning = F, message = F}
+## 增加一个虚拟新样本
+newdata <- descriptive[1, ]      
+nnumber <- dim(descriptive)[1]+1
+newdata$index_origin <- max(descriptive$index_origin) + 1  # 新的index number
+
+## 计算各学校偏好录取率
+descriptive_new <- AdmittedPct_Major(rbind(descriptive, newdata), nnumber)
+descriptive_new <- AdmittedPct_Grade(descriptive_new, nsample = nnumber, 
+                                    "gre_total_dis", "admittedpct_gre_college")
+descriptive_new <- AdmittedPct_Grade(descriptive_new, nsample = nnumber, 
+                                    names = "toefl_dis", newnames = "admittedpct_toefl_college")
+descriptive_new <- AdmittedPct_Grade(descriptive_new, nsample = nnumber, 
+                                    names = "gpa_dis", newnames = "admittedpct_gpa_college");
+descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                     names = "intern", newnames = "admittedpct_intern_college")
+descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                     names = "research", newnames = "admittedpct_research_college")
+descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                     names = "paper", newnames = "admittedpct_paper_college")
+descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                     names = "first", newnames = "admittedpct_first_college")
+descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                     names = "sci", newnames = "admittedpct_sci_college")
+descriptive_new$offertype <- as.factor(ifelse(descriptive_new$offertype=="Admitted", T, F))  # 调整为因子变量
+descriptive_ <- descriptive_new[ - nnumber, ]    # 增加录取率后的数据
+
+## 回归建模
+formula <- paste0("offertype ~ ", paste0(c("gpa_dis", "toefl_dis", "gre_total_dis", "type", "major_apply_new",
+                                         "season", "cross", "rl", "intern", "research", "paper", "first", "sci", 
+                                         "exchange", "Before_CollegeRank", "Districts", "CollegeRankTop50",
+                                         colnames(descriptive_new)[45:dim(descriptive_new)[2]]),
+                                       collapse = "+"))  # 给出加入回归的自变量
+myglm_ <- glm(formula, family = binomial(), data = descriptive_)  # 逻辑回归
+myglm <- step(myglm_, trace = F)     # 逐步回归
+summary(myglm)    # 查看回归结果
+vif(myglm)        # 检查共线性（为避免共线性问题，推荐信、出国交换等硬件条件×学校偏好录取率没有纳入回归）
+```
+
+## 预测
+```{r, warning = F, message = F, fig.show="hide"}
+set.seed(123)  # 随机数种子
+Auc <- NULL    # 设置初始值
+#par(family = "Hei")  # 设置字体，windows下跳过此步
+
+## 交叉验证计算AUC值
+for(i in 1:5){
+  # 抽取训练集序号
+  nsample <- sample(x = dim(descriptive)[1], size = dim(descriptive)[1]/5, replace = F)
+  
+  # 计算录取率
+  descriptive_new <- AdmittedPct_Major(descriptive, nsample)
+  descriptive_new <- AdmittedPct_Grade(descriptive_new, nsample, "gre_total_dis", "admittedpct_gre_college")
+  descriptive_new <- AdmittedPct_Grade(descriptive_new, nsample, names = "toefl_dis",
+                                       newnames = "admittedpct_toefl_college")
+  descriptive_new <- AdmittedPct_Grade(descriptive_new, nsample, names = "gpa_dis",
+                                       newnames = "admittedpct_gpa_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nsample, 
+                                     names = "intern", newnames = "admittedpct_intern_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nsample, 
+                                     names = "research", newnames = "admittedpct_research_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nsample, 
+                                     names = "paper", newnames = "admittedpct_paper_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nsample, 
+                                     names = "first", newnames = "admittedpct_first_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nsample, 
+                                     names = "sci", newnames = "admittedpct_sci_college")
+  descriptive_new$offertype <- as.factor(ifelse(descriptive_new$offertype == "Admitted", T, F))  # 调整录取变量类型
+  
+  # 抽取训练集和测试集
+  descriptive_test_new <- descriptive_new[nsample, ]
+  descriptive_train_new <- descriptive_new[-nsample, ]
+  
+  # 逻辑回归
+  formula <- paste0("offertype~", paste0(c("gpa_dis","toefl_dis","gre_total_dis","type","season","cross",
+                                           "major_apply_new","rl","intern","research","paper","sci",
+                                           "first","exchange","Districts","CollegeRankTop50",
+                                         colnames(descriptive_new)[45:dim(descriptive_new)[2]]),
+                                       collapse = "+"))  # 给出加入回归的自变量
+  myglm01 <- glm(formula,family = binomial(), data = descriptive_train_new)
+  myglm11 <- step(myglm01,trace = F)     # 逐步回归
+  
+  # 预测
+  a <- plot.roc(descriptive_test_new$offertype,col = "dodgerblue", print.auc=TRUE,   
+                auc.polygon=TRUE, auc.polygon.col="#f6f6f6",xlab = "特异度",ylab = "敏感度",
+                predict(myglm11, descriptive_test_new, type="response"),main = "预测ROC曲线")  
+  Auc[i] <- a$auc
+  i = i+1
+}
+
+mean(Auc)
+```
+
+
+## 情景预测
+### 情景1——科研学霸
+
+```{r, warning = F, message = F}
+## 假设学霸申请
+newdata <- descriptive[1,]
+newdata[, "gpa_dis"] <- "3.4~3.55"
+newdata[, "gre_total_dis"] <- ">325"
+newdata[, "toefl_dis"] <- ">106"
+newdata[, "type"] <- "PhD"
+newdata[, c("research","paper","sci")] <- 1
+newdata[, "Before_CollegeRank"] <- "Top100"
+newdata[, c("major_apply","major_apply_new")] <- "Stat/Biostat"
+newdata$index_origin <- max(descriptive$index_origin) + 1 
+nnumber <- dim(descriptive)[1]+1
+
+## 对每个学校，为newdata生成数据
+i <- 1
+new_admittedpct <- NULL
+new_collegerank <- NULL
+for(i in 1:length(Top100college)){
+  college <- Top100college[i]
+  newdata[, c("College_apply_new", "Top100_college_apply")] <- college
+  # 匹配学校位置
+  newdata$Districts <- unique(descriptive[descriptive$College_apply_new==college, "Districts"])
+  # 匹配学校排名
+  newdata$CollegeRankTop50 <- unique(descriptive[descriptive$College_apply_new==college,
+                                                  "CollegeRankTop50"])
+  # 匹配录取率
+  descriptive_new <- AdmittedPct_Major(rbind(descriptive, newdata), nsample = nnumber)
+  descriptive_new <- AdmittedPct_Grade(descriptive_new, nsample = nnumber, 
+                                      "gre_total_dis","admittedpct_gre_college")
+  descriptive_new <- AdmittedPct_Grade(descriptive_new, nsample = nnumber, 
+                                      names = "toefl_dis",newnames = "admittedpct_toefl_college")
+  descriptive_new <- AdmittedPct_Grade(descriptive_new, nsample = nnumber, 
+                                      names = "gpa_dis",newnames = "admittedpct_gpa_college");
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                       names = "intern",newnames = "admittedpct_intern_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                       names = "research",newnames = "admittedpct_research_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                       names = "paper", newnames = "admittedpct_paper_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                       names = "first", newnames = "admittedpct_first_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                       names = "sci", newnames = "admittedpct_sci_college")
+  # 预测
+  descriptive_new$offertype <- as.factor(ifelse(descriptive_new$offertype=="Admitted", T, F))
+  new_admittedpct[i] <- predict(myglm, descriptive_new[nnumber, ], type="response")  
+  new_collegerank[i] <- newdata$CollegeRankTop50
+}
+
+## 预测结果
+New_Admittedpct <- data.frame(Top100college,new_collegerank,new_admittedpct)
+New_Admittedpct <- data.frame(Top100college,new_collegerank,new_admittedpct)
+New_Admittedpct[order(New_Admittedpct$new_admittedpct, decreasing = T)[1:5], ]  # 预测最易录取
+New_Admittedpct_top50 <- New_Admittedpct[new_collegerank =="Top50", -2]
+New_Admittedpct_top50[order(New_Admittedpct_top50$new_admittedpct,         # 预测Top50学校中最易录取
+                            decreasing = T)[1:3], ]
+New_Admittedpct_top50[order(New_Admittedpct_top50$new_admittedpct,         # 预测Top50学校中最难录取
+                            decreasing = F)[1:3], ]
+
+```
+
+
+### 情景2——标准化成绩不足
+
+```{r, warning = F, message = F}
+## 假设生成新数据
+newdata <- descriptive[1,]
+newdata[, "gpa_dis"] <- "<=3.4"
+newdata[, "gre_total_dis"] <- "322~325"
+newdata[, "toefl_dis"] <- "98~102"
+newdata[, "type"] <- "MS"
+newdata[, c("intern", "exchange")] <- 1
+newdata[, "Before_CollegeRank"] <- "Others"
+newdata[, c("major_apply","major_apply_new")] <- "CS"
+newdata$index_origin <- max(descriptive$index_origin) + 1 
+nnumber <- dim(descriptive)[1]+1
+
+## 对每个学校，为newdata生成数据
+i <- 1
+new_admittedpct <- NULL
+new_collegerank <- NULL
+for(i in 1:length(Top100college)){
+  college <- Top100college[i]
+  newdata[, c("College_apply_new", "Top100_college_apply")] <- college
+  # 匹配学校位置
+  newdata$Districts <- unique(descriptive[descriptive$College_apply_new==college, "Districts"])
+  # 匹配学校排名
+  newdata$CollegeRankTop50 <- unique(descriptive[descriptive$College_apply_new==college,
+                                                  "CollegeRankTop50"])
+  # 匹配录取率
+  descriptive_new <- AdmittedPct_Major(rbind(descriptive, newdata), nsample = nnumber)
+  descriptive_new <- AdmittedPct_Grade(descriptive_new, nsample = nnumber, 
+                                      "gre_total_dis","admittedpct_gre_college")
+  descriptive_new <- AdmittedPct_Grade(descriptive_new, nsample = nnumber, 
+                                      names = "toefl_dis",newnames = "admittedpct_toefl_college")
+  descriptive_new <- AdmittedPct_Grade(descriptive_new, nsample = nnumber, 
+                                      names = "gpa_dis",newnames = "admittedpct_gpa_college");
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                       names = "intern",newnames = "admittedpct_intern_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                       names = "research",newnames = "admittedpct_research_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                       names = "paper", newnames = "admittedpct_paper_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                       names = "first", newnames = "admittedpct_first_college")
+  descriptive_new <- AdmittedPct_Extra(descriptive_new, nsample = nnumber, 
+                                       names = "sci", newnames = "admittedpct_sci_college")
+  # 预测
+  descriptive_new$offertype <- as.factor(ifelse(descriptive_new$offertype=="Admitted", T, F))
+  new_admittedpct[i] <- predict(myglm, descriptive_new[nnumber, ], type="response")  
+  new_collegerank[i] <- newdata$CollegeRankTop50
+}
+
+## 预测结果
+New_Admittedpct <- data.frame(Top100college,new_collegerank,new_admittedpct)
+New_Admittedpct[order(New_Admittedpct$new_admittedpct, decreasing = T)[1:5], ]  # 预测最易录取
+New_Admittedpct_top50 <- New_Admittedpct[new_collegerank =="Top50", -2]
+New_Admittedpct_top50[order(New_Admittedpct_top50$new_admittedpct,         # 预测Top50学校中最易录取
+                            decreasing = T)[1:3], ]
+New_Admittedpct_top50[order(New_Admittedpct_top50$new_admittedpct,         # 预测Top50学校中最难录取
+                            decreasing = F)[1:3], ]
+```
+
+
+
+
+
+
