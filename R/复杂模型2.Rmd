@@ -9,10 +9,6 @@ output:
     toc: yes
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
 
 # 1.预处理
 
@@ -37,13 +33,6 @@ data$sci <- as.factor(data$sci)
 data$exchange <- as.factor(data$exchange)
 data$first <- as.factor(data$first)
 
-### 平衡数据试一试：（欠采样）
-set.seed(123)
-data_1 = data[data$y == T,]
-data_0 = data[data$y == F,]
-data_11 = data_1[sample(x = 1:dim(data_1)[1], size = dim(data_0)[1],replace = TRUE),]
-data = rbind(data_11, data_0)
-summary(data)
 ```
 
 
@@ -81,10 +70,10 @@ classif.task = makeClassifTask(data = data, target = "y")
 
 # 划分训练和测试
 n = getTaskSize(classif.task)
-set.seed(123)
+set.seed(1)
 random_index <- sample(x = 1:n, size = n * 0.8, replace = F)
 train.set = random_index
-test.set = (1:n)[-random_index]
+test.set = (1:n)[ - random_index]
 ```
 
 # 建模
@@ -103,7 +92,7 @@ plotROC(lr.pred$data);Accuracy(lr.pred$data)
 ```{r, echo=TRUE, message=F, warning=F}
 ####### 2. knn  ------------------
 # install.packages("kknn")
-#getLearnerParamSet(makeLearner("classif.kknn"))  # 获取所有超参数
+# getLearnerParamSet(makeLearner("classif.kknn"))  # 获取所有超参数
 rdesc = makeResampleDesc("CV", iters = 5L)  # 5折交叉验证
 discrete_ps = makeParamSet(  # 参数空间
   makeDiscreteParam("k", values = c(1, 3, 5, 10, 20, 30, 50, 80, 100))
@@ -219,6 +208,7 @@ nnet.pred = predict(nnet_model_best, task = classif.task, subset = test.set)
 
 ```{r, message=F, warning=F}
 # 预测
+res  # 超参数搜索结果
 plotROC(nnet.pred$data);Accuracy(nnet.pred$data)
 ```
 
@@ -268,7 +258,7 @@ table(round(predict(xgb,d_data)), data$y)
 # 变量重要性
 importance <- xgb.importance(data_xgb@Dimnames[[2]], model = xgb) 
 head(importance)
-xgb.ggplot.importance(importance[1:10,])
+xgb.ggplot.importance(importance[1:10, ])
 ```
 
 ```{r, echo=TRUE, message=F, warning=F, results = "hide"}
@@ -303,17 +293,43 @@ accuracy_xgb;mean(accuracy_xgb)
 ```
 
 
+```{r, echo=TRUE, message=F, warning=F}
+# ROC曲线
+test_x <- data[cv_index==1, ]
+train_x <- data[cv_index!=1, ]
+  
+# 处理matrix
+data_xgb_train <-  sparse.model.matrix(y ~ . , data = train_x) 
+data_xgb_test <-  sparse.model.matrix(y ~ . , data = test_x) 
+d_train <- xgb.DMatrix(data_xgb_train, label = train_x$y)   
+d_test <- xgb.DMatrix(data_xgb_test, label = test_x$y)    
+
+# xgb
+xgb <- xgboost(data = d_train, max_depth = 20, gamma = 0.2, subsample = 0.9, eta = 0.1,
+                 booster = "gbtree",objective='binary:logistic', nround = 50)
+# prediction 
+table_tmp <- table(test_x$y, round(predict(xgb, d_test)))
+sum(diag(table_tmp)) / sum(table_tmp)  # 准确率
+# ROC曲线
+modelroc <- roc(test_x$y, predict(xgb, d_test) )
+plot(modelroc, print.auc=TRUE,auc.polygon=TRUE, 
+     auc.polygon.col="#f6f6f6", print.thres = TRUE,main = "ROC curve")
+```
+
 ## 9. kmeans & em 聚类算法
 
 ```{r, echo=TRUE, message=F, warning=F}
 ###### 9. kmeans & em 聚类算法
 # kmeans
 library(cluster)
-fit.kmeans <- pam(data[, -18], 2)
+fit.kmeans <- pam(data[, -17], 2)
+fit.kmeans$silinfo$avg.width   # 轮廓系数
 table(fit.kmeans$clustering, data$y)
+
 # em
 library(mclust)
-fit.em = Mclust(data[, -18], 2)
+fit.em = Mclust(data[, -17], 2)
+fit.em$parameters$mean
 table(fit.em$classification, data$y)
 ```
 
@@ -389,9 +405,8 @@ accuracy_mlp <- sapply(1: k ,function(i){
   table_tmp = table(mlp_pred, test$y)
   right_ratio <- sum(diag(table_tmp)) / sum(table_tmp)
   return(right_ratio)
-}
+  }
 )
 accuracy_mlp
 ```
-
 

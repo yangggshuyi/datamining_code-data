@@ -1090,15 +1090,27 @@ matrix4<span class="fl">.1</span></code></pre></div>
 <div id="整理输出数据" class="section level1">
 <h1>整理输出数据</h1>
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">## 成绩分段
-descriptive$gre_total_dis &lt;-<span class="st"> </span><span class="kw">cut</span>(descriptive$gre_total_new, <span class="dt">breaks =</span> <span class="kw">c</span>(<span class="dv">0</span>, <span class="dv">319</span>, <span class="dv">322</span>, <span class="dv">325</span>, <span class="ot">Inf</span>),
-                                 <span class="dt">labels =</span> <span class="kw">c</span>(<span class="st">&quot;&lt;=319&quot;</span>, <span class="st">&quot;319~322&quot;</span>, <span class="st">&quot;322~325&quot;</span>, <span class="st">&quot;&gt;325&quot;</span>))
-descriptive$toefl_dis &lt;-<span class="st"> </span><span class="kw">cut</span>(descriptive$toefl, <span class="dt">breaks =</span> <span class="kw">c</span>(<span class="dv">0</span>, <span class="dv">98</span>, <span class="dv">102</span>, <span class="dv">106</span>, <span class="ot">Inf</span>),
-                             <span class="dt">labels =</span> <span class="kw">c</span>(<span class="st">&quot;&lt;=98&quot;</span>, <span class="st">&quot;98~102&quot;</span>, <span class="st">&quot;102~106&quot;</span>, <span class="st">&quot;&gt;106&quot;</span>))
-descriptive$gpa_dis &lt;-<span class="st"> </span><span class="kw">cut</span>(descriptive$Standardgap, <span class="dt">breaks =</span> <span class="kw">c</span>(<span class="dv">0</span>, <span class="fl">3.4</span>, <span class="fl">3.55</span>, <span class="fl">3.7</span>, <span class="ot">Inf</span>),
-                           <span class="dt">labels =</span> <span class="kw">c</span>(<span class="st">&quot;&lt;=3.4&quot;</span>, <span class="st">&quot;3.4~3.55&quot;</span>, <span class="st">&quot;3.55~3.7&quot;</span>, <span class="st">&quot;&gt;3.7&quot;</span>))
+<span class="co"># descriptive$gre_total_dis &lt;- cut(descriptive$gre_total_new, breaks = c(0, 319, 322, 325, Inf),</span>
+<span class="co">#                                  labels = c(&quot;&lt;=319&quot;, &quot;319~322&quot;, &quot;322~325&quot;, &quot;&gt;325&quot;))</span>
+<span class="co"># descriptive$toefl_dis &lt;- cut(descriptive$toefl, breaks = c(0, 98, 102, 106, Inf),</span>
+<span class="co">#                              labels = c(&quot;&lt;=98&quot;, &quot;98~102&quot;, &quot;102~106&quot;, &quot;&gt;106&quot;))</span>
+<span class="co"># descriptive$gpa_dis &lt;- cut(descriptive$Standardgap, breaks = c(0, 3.4, 3.55, 3.7, Inf),</span>
+<span class="co">#                            labels = c(&quot;&lt;=3.4&quot;, &quot;3.4~3.55&quot;, &quot;3.55~3.7&quot;, &quot;&gt;3.7&quot;))</span>
+descriptive$gre_total_dis &lt;-<span class="st"> </span><span class="kw">as.numeric</span>(<span class="kw">cut</span>(descriptive$gre_total_new, <span class="dt">breaks =</span> <span class="kw">c</span>(<span class="dv">0</span>, <span class="dv">319</span>, <span class="dv">322</span>, <span class="dv">325</span>, <span class="ot">Inf</span>),
+                                 <span class="dt">labels =</span> <span class="kw">c</span>(<span class="st">&quot;1&quot;</span>, <span class="st">&quot;2&quot;</span>, <span class="st">&quot;3&quot;</span>, <span class="st">&quot;4&quot;</span>)))
+descriptive$toefl_dis &lt;-<span class="st"> </span><span class="kw">as.numeric</span>(<span class="kw">cut</span>(descriptive$toefl, <span class="dt">breaks =</span> <span class="kw">c</span>(<span class="dv">0</span>, <span class="dv">98</span>, <span class="dv">102</span>, <span class="dv">106</span>, <span class="ot">Inf</span>),
+                             <span class="dt">labels =</span> <span class="kw">c</span>(<span class="st">&quot;1&quot;</span>, <span class="st">&quot;2&quot;</span>, <span class="st">&quot;3&quot;</span>, <span class="st">&quot;4&quot;</span>)))
+descriptive$gpa_dis &lt;-<span class="st"> </span><span class="kw">as.numeric</span>(<span class="kw">cut</span>(descriptive$Standardgap, <span class="dt">breaks =</span> <span class="kw">c</span>(<span class="dv">0</span>, <span class="fl">3.4</span>, <span class="fl">3.55</span>, <span class="fl">3.7</span>, <span class="ot">Inf</span>),
+                           <span class="dt">labels =</span> <span class="kw">c</span>(<span class="st">&quot;1&quot;</span>, <span class="st">&quot;2&quot;</span>, <span class="st">&quot;3&quot;</span>, <span class="st">&quot;4&quot;</span>)))
+
+descriptive$CollegeRankTop50 &lt;-<span class="st"> </span><span class="kw">as.numeric</span>(<span class="kw">factor</span>(descriptive$CollegeRankTop50,<span class="dt">levels =</span> <span class="kw">c</span>(<span class="st">&quot;Others&quot;</span>, <span class="st">&quot;Top50&quot;</span>),<span class="dt">labels =</span> <span class="kw">c</span>(<span class="dv">1</span>,<span class="dv">2</span>)))
+
+
+descriptive$Before_CollegeRank &lt;-<span class="st"> </span><span class="kw">as.numeric</span>(<span class="kw">factor</span>(descriptive$Before_CollegeRank,<span class="dt">levels =</span> <span class="kw">c</span>(<span class="st">&quot;Others&quot;</span>,<span class="st">&quot;Top100~500&quot;</span>, <span class="st">&quot;Top100&quot;</span>),<span class="dt">labels =</span> <span class="kw">c</span>(<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">3</span>)))
+
 ## 删去缺失后输出
 descriptive &lt;-<span class="st"> </span><span class="kw">na.omit</span>(descriptive)                
-<span class="co">#write.csv(file = &quot;../data/descriptive.csv&quot;, x = descriptive, row.names = F)</span></code></pre></div>
+<span class="kw">write.csv</span>(<span class="dt">file =</span> <span class="st">&quot;../data/descriptive.csv&quot;</span>, <span class="dt">x =</span> descriptive, <span class="dt">row.names =</span> F)</code></pre></div>
 </div>
 </div><!-- /.entry-content -->
 </article>

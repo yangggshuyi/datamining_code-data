@@ -889,13 +889,25 @@ matrix4.2
 # 整理输出数据
 ```{r, warning = F, fig.width = 7, fig.height = 7,message = F}
 ## 成绩分段
-descriptive$gre_total_dis <- cut(descriptive$gre_total_new, breaks = c(0, 319, 322, 325, Inf),
-                                 labels = c("<=319", "319~322", "322~325", ">325"))
-descriptive$toefl_dis <- cut(descriptive$toefl, breaks = c(0, 98, 102, 106, Inf),
-                             labels = c("<=98", "98~102", "102~106", ">106"))
-descriptive$gpa_dis <- cut(descriptive$Standardgap, breaks = c(0, 3.4, 3.55, 3.7, Inf),
-                           labels = c("<=3.4", "3.4~3.55", "3.55~3.7", ">3.7"))
+# descriptive$gre_total_dis <- cut(descriptive$gre_total_new, breaks = c(0, 319, 322, 325, Inf),
+#                                  labels = c("<=319", "319~322", "322~325", ">325"))
+# descriptive$toefl_dis <- cut(descriptive$toefl, breaks = c(0, 98, 102, 106, Inf),
+#                              labels = c("<=98", "98~102", "102~106", ">106"))
+# descriptive$gpa_dis <- cut(descriptive$Standardgap, breaks = c(0, 3.4, 3.55, 3.7, Inf),
+#                            labels = c("<=3.4", "3.4~3.55", "3.55~3.7", ">3.7"))
+descriptive$gre_total_dis <- as.numeric(cut(descriptive$gre_total_new, breaks = c(0, 319, 322, 325, Inf),
+                                 labels = c("1", "2", "3", "4")))
+descriptive$toefl_dis <- as.numeric(cut(descriptive$toefl, breaks = c(0, 98, 102, 106, Inf),
+                             labels = c("1", "2", "3", "4")))
+descriptive$gpa_dis <- as.numeric(cut(descriptive$Standardgap, breaks = c(0, 3.4, 3.55, 3.7, Inf),
+                           labels = c("1", "2", "3", "4")))
+
+descriptive$CollegeRankTop50 <- as.numeric(factor(descriptive$CollegeRankTop50,levels = c("Others", "Top50"),labels = c(1,2)))
+
+
+descriptive$Before_CollegeRank <- as.numeric(factor(descriptive$Before_CollegeRank,levels = c("Others","Top100~500", "Top100"),labels = c(1,2,3)))
+
 ## 删去缺失后输出
 descriptive <- na.omit(descriptive)                
-#write.csv(file = "../data/descriptive.csv", x = descriptive, row.names = F)
+write.csv(file = "../data/descriptive.csv", x = descriptive, row.names = F)
 ```
